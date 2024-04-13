@@ -23,55 +23,70 @@ pub struct BlockIterator {
 
 impl BlockIterator {
     fn new(block: Arc<Block>) -> Self {
+        let first_key = block.key(0);
         Self {
             block,
             key: KeyVec::new(),
             value_range: (0, 0),
             idx: 0,
-            first_key: KeyVec::new(),
+            first_key,
         }
     }
 
     /// Creates a block iterator and seek to the first entry.
     pub fn create_and_seek_to_first(block: Arc<Block>) -> Self {
-        unimplemented!()
+        let mut ret = BlockIterator::new(block);
+        ret.seek_to_first();
+        ret
     }
 
     /// Creates a block iterator and seek to the first key that >= `key`.
     pub fn create_and_seek_to_key(block: Arc<Block>, key: KeySlice) -> Self {
-        unimplemented!()
+        let mut ret = BlockIterator::new(block);
+        ret.seek_to_key(key);
+        ret
     }
 
     /// Returns the key of the current entry.
     pub fn key(&self) -> KeySlice {
-        unimplemented!()
+        KeySlice::from_slice(self.key.raw_ref())
     }
 
     /// Returns the value of the current entry.
     pub fn value(&self) -> &[u8] {
-        unimplemented!()
+        &self.block.data[self.value_range.0..self.value_range.1]
     }
 
     /// Returns true if the iterator is valid.
     /// Note: You may want to make use of `key`
     pub fn is_valid(&self) -> bool {
-        unimplemented!()
+        !self.key.is_empty()
     }
 
     /// Seeks to the first key in the block.
     pub fn seek_to_first(&mut self) {
-        unimplemented!()
-    }
-
-    /// Move to the next key in the block.
-    pub fn next(&mut self) {
-        unimplemented!()
+        self.idx = 0;
+        self.key = self.block.key(0);
+        self.value_range = self.block.value_range(0);
     }
 
     /// Seek to the first key that >= `key`.
     /// Note: You should assume the key-value pairs in the block are sorted when being added by
     /// callers.
     pub fn seek_to_key(&mut self, key: KeySlice) {
-        unimplemented!()
+        self.idx = self.block.idx(key);
+        self.key = self.block.key(self.idx);
+        self.value_range = self.block.value_range(self.idx);
+    }
+
+    /// Move to the next key in the block.
+    pub fn next(&mut self) {
+        if self.idx == self.block.offsets.len() - 1 {
+            self.key = KeyVec::new();
+            return;
+        }
+        self.idx += 1;
+        self.key = self.block.key(self.idx);
+        self.value_range = self.block.value_range(self.idx);
     }
 }

@@ -20,6 +20,10 @@ use crate::manifest::Manifest;
 use crate::mem_table::MemTable;
 use crate::mvcc::LsmMvccInner;
 use crate::table::SsTable;
+use crate::{
+    iterators::{merge_iterator::MergeIterator, StorageIterator},
+    mem_table::MemTableIterator,
+};
 
 pub type BlockCache = moka::sync::Cache<(usize, usize), Arc<Block>>;
 
@@ -288,7 +292,7 @@ impl LsmStorageInner {
         for memtable in memtables {
             let get = memtable.get(_key);
             if let Some(val) = get {
-                if val.len() > 0 {
+                if !val.is_empty() {
                     ret = Ok(Some(val));
                     break;
                 } else {
@@ -376,6 +380,13 @@ impl LsmStorageInner {
         _lower: Bound<&[u8]>,
         _upper: Bound<&[u8]>,
     ) -> Result<FusedIterator<LsmIterator>> {
-        unimplemented!()
+        let state = self.state.read();
+        let mut iters_mem = vec![Box::new(state.memtable.scan(_lower, _upper))];
+        for imm in &state.imm_memtables {
+            iters_mem.push(Box::new(imm.scan(_lower, _upper)));
+        }
+        Ok(FusedIterator::new(
+            LsmIterator::new(MergeIterator::create(iters_mem)).unwrap(),
+        ))
     }
 }

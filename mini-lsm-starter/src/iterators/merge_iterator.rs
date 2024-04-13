@@ -2,6 +2,7 @@
 #![allow(dead_code)] // TODO(you): remove this lint after implementing this mod
 
 use std::cmp::{self};
+use std::collections::binary_heap::PeekMut;
 use std::collections::BinaryHeap;
 
 use anyhow::Result;
@@ -47,7 +48,20 @@ pub struct MergeIterator<I: StorageIterator> {
 
 impl<I: StorageIterator> MergeIterator<I> {
     pub fn create(iters: Vec<Box<I>>) -> Self {
-        unimplemented!()
+        let mut iters_heap = BinaryHeap::new();
+        for (index, iter) in iters.into_iter().enumerate() {
+            if iter.is_valid() {
+                iters_heap.push(HeapWrapper(index, iter));
+            }
+        }
+        let mut current = None;
+        if !iters_heap.is_empty() {
+            current = iters_heap.pop();
+        }
+        Self {
+            iters: iters_heap,
+            current,
+        }
     }
 }
 
@@ -57,18 +71,51 @@ impl<I: 'static + for<'a> StorageIterator<KeyType<'a> = KeySlice<'a>>> StorageIt
     type KeyType<'a> = KeySlice<'a>;
 
     fn key(&self) -> KeySlice {
-        unimplemented!()
+        match &self.current {
+            Some(wrapper) => wrapper.1.key(),
+            None => KeySlice::default(),
+        }
     }
 
     fn value(&self) -> &[u8] {
-        unimplemented!()
+        match &self.current {
+            Some(wrapper) => wrapper.1.value(),
+            None => &[],
+        }
     }
 
     fn is_valid(&self) -> bool {
-        unimplemented!()
+        self.current.is_some()
     }
 
     fn next(&mut self) -> Result<()> {
-        unimplemented!()
+        let key_old = self.key().to_key_vec();
+        let iter_current = self.current.take();
+        if let Some(mut iter) = iter_current {
+            iter.1.next()?;
+            if iter.1.is_valid() {
+                self.iters.push(iter);
+            }
+        }
+        while let Some(mut iter_new) = self.iters.peek_mut() {
+            let result_cmp = iter_new.1.key().to_key_vec().cmp(&key_old);
+            if result_cmp == cmp::Ordering::Greater {
+                self.current = Some(PeekMut::pop(iter_new));
+            } else {
+                assert_eq!(result_cmp, cmp::Ordering::Equal);
+                let result = iter_new.1.next();
+                if let e @ Err(_) = result {
+                    PeekMut::pop(iter_new);
+                    return e;
+                }
+                if !iter_new.1.is_valid() {
+                    PeekMut::pop(iter_new);
+                }
+            }
+            if self.current.is_some() {
+                break;
+            }
+        }
+        Ok(())
     }
 }
