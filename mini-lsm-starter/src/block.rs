@@ -30,6 +30,16 @@ impl Block {
         Bytes::copy_from_slice(content.as_slice())
     }
 
+    pub fn encode_vec(&self) -> Vec<u8> {
+        let mut content = self.data.clone();
+        for offset in &self.offsets {
+            content.append(&mut offset.to_le_bytes().to_vec());
+        }
+        let num_of_kvs: u16 = self.offsets.len().try_into().unwrap();
+        content.append(&mut num_of_kvs.to_le_bytes().to_vec());
+        content
+    }
+
     /// Decode from the data layout, transform the input `data` to a single `Block`
     pub fn decode(data: &[u8]) -> Self {
         assert!(data.len() >= 2);
@@ -64,6 +74,11 @@ impl Block {
         self.key_with_offset(offset)
     }
 
+    pub(crate) fn last_key(&self) -> KeyVec {
+        let idx_last = self.offsets.len() - 1;
+        self.key(idx_last)
+    }
+
     fn key_with_offset(&self, offset: usize) -> KeyVec {
         let len_key: usize = LittleEndian::read_u16(&self.data[offset..(offset + 2)]).into();
         KeyVec::from_vec(self.data[(offset + 2)..(offset + 2 + len_key)].to_vec())
@@ -80,17 +95,14 @@ impl Block {
 
     pub(crate) fn idx(&self, key: KeySlice) -> usize {
         let key_cmp = key.to_key_vec();
-        let mut ret;
+        let ret;
         let fn_cmp = |offset: &u16| {
-            let key_current = self.key_with_offset((*offset).into());
+            let key_current = self.key_with_offset((*offset) as usize);
             key_current.cmp(&key_cmp)
         };
         match self.offsets.binary_search_by(fn_cmp) {
             Ok(idx) => ret = idx,
             Err(idx) => ret = idx,
-        }
-        if ret == self.offsets.len() {
-            ret -= 1;
         }
         ret
     }

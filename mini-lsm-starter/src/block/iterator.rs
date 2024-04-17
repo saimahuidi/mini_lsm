@@ -75,6 +75,10 @@ impl BlockIterator {
     /// callers.
     pub fn seek_to_key(&mut self, key: KeySlice) {
         self.idx = self.block.idx(key);
+        if self.idx == self.block.offsets.len() {
+            self.key = KeyVec::new();
+            return;
+        }
         self.key = self.block.key(self.idx);
         self.value_range = self.block.value_range(self.idx);
     }
